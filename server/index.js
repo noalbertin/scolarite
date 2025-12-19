@@ -249,9 +249,13 @@ app.get("/api/demandes/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Accès non autorisé" })
     }
 
-    // Vérifier que la demande appartient à l'étudiant
+    // Récupérer la demande avec les informations de l'étudiant
     const [demandes] = await pool.execute(
-      `SELECT * FROM demande_document WHERE id = ? AND etudiant_id = ?`,
+      `SELECT d.*, e.matricule, e.nom, e.prenom, e.email, e.telephone,
+              e.nom_pere, e.nom_mere, e.date_naissance, e.lieu_naissance
+       FROM demande_document d
+       JOIN etudiant e ON d.etudiant_id = e.id
+       WHERE d.id = ? AND d.etudiant_id = ?`,
       [req.params.id, req.user.id],
     )
 
@@ -260,6 +264,20 @@ app.get("/api/demandes/:id", authenticateToken, async (req, res) => {
     }
 
     const demande = demandes[0]
+
+    // Structurer les informations de l'étudiant
+    demande.etudiant = {
+      matricule: demande.matricule,
+      nom: demande.nom,
+      prenom: demande.prenom,
+      email: demande.email,
+      telephone: demande.telephone,
+      filiere: demande.filiere,
+      nom_pere: demande.nom_pere,
+      nom_mere: demande.nom_mere,
+      date_naissance: demande.date_naissance,
+      lieu_naissance: demande.lieu_naissance,
+    }
 
     // Récupérer les documents de la demande
     const [documents] = await pool.execute(
@@ -333,6 +351,80 @@ app.put("/api/notifications/:id/lu", authenticateToken, async (req, res) => {
   }
 })
 
+// ============ ROUTES NOTIFICATIONS PERSONNEL ============
+
+// Lister les notifications du personnel
+app.get("/api/personnel/notifications", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "personnel") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    const [notifications] = await pool.execute(
+      `SELECT n.*, d.montant_total, d.statut as demande_statut,
+              e.nom, e.prenom, e.matricule
+       FROM notification_personnel n
+       JOIN demande_document d ON n.demande_id = d.id
+       JOIN etudiant e ON d.etudiant_id = e.id
+       WHERE n.personnel_id = ?
+       ORDER BY n.created_at DESC
+       LIMIT 50`,
+      [req.user.id]
+    )
+
+    res.json({ notifications })
+  } catch (error) {
+    console.error("Erreur:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
+// Compter les notifications non lues
+app.get("/api/personnel/notifications/count", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "personnel") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    const [result] = await pool.execute(
+      `SELECT COUNT(*) as count
+       FROM notification_personnel
+       WHERE personnel_id = ? AND lu = FALSE`,
+      [req.user.id]
+    )
+
+    res.json({ count: result[0].count })
+  } catch (error) {
+    console.error("Erreur:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
+// Marquer une notification comme lue
+app.put("/api/personnel/notifications/:id/lu", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "personnel") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    const [result] = await pool.execute(
+      `UPDATE notification_personnel 
+       SET lu = TRUE 
+       WHERE id = ? AND personnel_id = ?`,
+      [req.params.id, req.user.id]
+    )
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Notification introuvable" })
+    }
+
+    res.json({ message: "Notification marquée comme lue" })
+  } catch (error) {
+    console.error("Erreur:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
 // ============ ROUTES PERSONNEL ============
 
 // Lister les demandes (filtrées par statut)
@@ -363,6 +455,130 @@ app.get("/api/personnel/demandes", authenticateToken, async (req, res) => {
     res.json({ demandes })
   } catch (error) {
     console.error("Erreur:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
+// Statistiques du personnel
+app.get("/api/personnel/stats", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "personnel") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    // Total des demandes
+    const [totalResult] = await pool.execute(
+      "SELECT COUNT(*) as total FROM demande_document"
+    )
+
+    // Demandes en attente
+    const [pendingResult] = await pool.execute(
+      "SELECT COUNT(*) as pending FROM demande_document WHERE statut = 'EN_ATTENTE'"
+    )
+
+    // Demandes validées
+    const [validatedResult] = await pool.execute(
+      "SELECT COUNT(*) as validated FROM demande_document WHERE statut = 'VALIDEE'"
+    )
+
+    // Demandes prêtes
+    const [readyResult] = await pool.execute(
+      "SELECT COUNT(*) as ready FROM demande_document WHERE statut = 'PRET'"
+    )
+
+    // Demandes retirées
+    const [withdrawnResult] = await pool.execute(
+      "SELECT COUNT(*) as withdrawn FROM demande_document WHERE statut = 'RETIRE'"
+    )
+
+    const stats = {
+      total: totalResult[0].total,
+      pending: pendingResult[0].pending,
+      validated: validatedResult[0].validated,
+      ready: readyResult[0].ready,
+      withdrawn: withdrawnResult[0].withdrawn,
+    }
+
+    res.json(stats)
+  } catch (error) {
+    console.error("Erreur récupération stats:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
+// Récupérer le profil de l'étudiant connecté
+app.get("/api/etudiant/profile", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "etudiant") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT id, matricule, nom, prenom, date_naissance, lieu_naissance, 
+              email, telephone, nom_pere, nom_mere, actif, created_at
+       FROM etudiant 
+       WHERE id = ?`,
+      [req.user.id]
+    )
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Profil introuvable" })
+    }
+
+    res.json({ user: rows[0] })
+  } catch (error) {
+    console.error("Erreur récupération profil:", error)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
+// Mettre à jour le profil de l'étudiant connecté
+app.put("/api/etudiant/profile", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.type !== "etudiant") {
+      return res.status(403).json({ error: "Accès non autorisé" })
+    }
+
+    const { nom, prenom, date_naissance, lieu_naissance, email, telephone, nom_pere, nom_mere } = req.body
+
+    // Validation basique
+    if (!email || !nom || !prenom) {
+      return res.status(400).json({ error: "Les champs obligatoires (Nom, Prénom, Email) sont requis" })
+    }
+
+    // Vérifier si l'email existe déjà pour un autre étudiant
+    const [existingEmail] = await pool.execute(
+      "SELECT id FROM etudiant WHERE email = ? AND id != ?",
+      [email, req.user.id]
+    )
+
+    if (existingEmail.length > 0) {
+      return res.status(400).json({ error: "Cet email est déjà utilisé" })
+    }
+
+    // Mettre à jour le profil
+    await pool.execute(
+      `UPDATE etudiant 
+       SET nom = ?, prenom = ?, date_naissance = ?, lieu_naissance = ?, email = ?, telephone = ?, nom_pere = ?, nom_mere = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [nom, prenom, date_naissance, lieu_naissance, email, telephone || null, nom_pere || null, nom_mere || null, req.user.id]
+    )
+
+    // Récupérer le profil mis à jour
+    const [rows] = await pool.execute(
+      `SELECT id, matricule, nom, prenom, date_naissance, lieu_naissance, 
+              email, telephone, nom_pere, nom_mere, actif, created_at
+       FROM etudiant 
+       WHERE id = ?`,
+      [req.user.id]
+    )
+
+    res.json({
+      message: "Profil mis à jour avec succès",
+      user: rows[0]
+    })
+  } catch (error) {
+    console.error("Erreur mise à jour profil:", error)
     res.status(500).json({ error: "Erreur serveur" })
   }
 })
@@ -488,128 +704,28 @@ app.post("/api/personnel/demandes/:id/preparer", authenticateToken, async (req, 
   }
 })
 
-// Statistiques du personnel
-app.get("/api/personnel/stats", authenticateToken, async (req, res) => {
+// Marquer comme retiré
+app.post("/api/personnel/demandes/:id/retirer", authenticateToken, async (req, res) => {
   try {
     if (req.user.type !== "personnel") {
       return res.status(403).json({ error: "Accès non autorisé" })
     }
 
-    // Total des demandes
-    const [totalResult] = await pool.execute(
-      "SELECT COUNT(*) as total FROM demande_document"
-    )
-
-    // Demandes en attente
-    const [pendingResult] = await pool.execute(
-      "SELECT COUNT(*) as pending FROM demande_document WHERE statut = 'EN_ATTENTE'"
-    )
-
-    // Demandes validées
-    const [validatedResult] = await pool.execute(
-      "SELECT COUNT(*) as validated FROM demande_document WHERE statut = 'VALIDEE'"
-    )
-
-    // Demandes prêtes
-    const [readyResult] = await pool.execute(
-      "SELECT COUNT(*) as ready FROM demande_document WHERE statut = 'PRET'"
-    )
-
-    const stats = {
-      total: totalResult[0].total,
-      pending: pendingResult[0].pending,
-      validated: validatedResult[0].validated,
-      ready: readyResult[0].ready,
-    }
-
-    res.json(stats)
-  } catch (error) {
-    console.error("Erreur récupération stats:", error)
-    res.status(500).json({ error: "Erreur serveur" })
-  }
-})
-
-// Ajouter ces routes dans votre fichier backend Express (server.js)
-// À placer dans une nouvelle section "ROUTES PROFIL ÉTUDIANT"
-
-// ============ ROUTES PROFIL ÉTUDIANT ============
-
-// Récupérer le profil de l'étudiant connecté
-app.get("/api/etudiant/profile", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.type !== "etudiant") {
-      return res.status(403).json({ error: "Accès non autorisé" })
-    }
-
-    const [rows] = await pool.execute(
-      `SELECT id, matricule, nom, prenom, date_naissance, lieu_naissance, 
-              email, telephone, nom_pere, nom_mere, actif, created_at
-       FROM etudiant 
-       WHERE id = ?`,
-      [req.user.id]
-    )
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Profil introuvable" })
-    }
-
-    res.json({ user: rows[0] })
-  } catch (error) {
-    console.error("Erreur récupération profil:", error)
-    res.status(500).json({ error: "Erreur serveur" })
-  }
-})
-
-// Mettre à jour le profil de l'étudiant connecté
-app.put("/api/etudiant/profile", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.type !== "etudiant") {
-      return res.status(403).json({ error: "Accès non autorisé" })
-    }
-
-    const { email, telephone } = req.body
-
-    // Validation basique
-    if (!email) {
-      return res.status(400).json({ error: "L'email est requis" })
-    }
-
-    // Vérifier si l'email existe déjà pour un autre étudiant
-    const [existingEmail] = await pool.execute(
-      "SELECT id FROM etudiant WHERE email = ? AND id != ?",
-      [email, req.user.id]
-    )
-
-    if (existingEmail.length > 0) {
-      return res.status(400).json({ error: "Cet email est déjà utilisé" })
-    }
-
-    // Mettre à jour le profil
     await pool.execute(
-      `UPDATE etudiant 
-       SET email = ?, telephone = ?, updated_at = NOW()
+      `UPDATE demande_document 
+       SET statut = 'RETIRE', retiree_le = NOW()
        WHERE id = ?`,
-      [email, telephone || null, req.user.id]
+      [req.params.id],
     )
 
-    // Récupérer le profil mis à jour
-    const [rows] = await pool.execute(
-      `SELECT id, matricule, nom, prenom, date_naissance, lieu_naissance, 
-              email, telephone, nom_pere, nom_mere, actif, created_at
-       FROM etudiant 
-       WHERE id = ?`,
-      [req.user.id]
-    )
-
-    res.json({ 
-      message: "Profil mis à jour avec succès",
-      user: rows[0] 
-    })
+    res.json({ message: "Document marqué comme retiré" })
   } catch (error) {
-    console.error("Erreur mise à jour profil:", error)
+    console.error("Erreur:", error)
     res.status(500).json({ error: "Erreur serveur" })
   }
 })
+
+
 
 // Démarrer le serveur
 app.listen(PORT, () => {

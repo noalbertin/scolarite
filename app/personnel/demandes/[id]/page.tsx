@@ -8,20 +8,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { 
-  ArrowLeft, 
-  CheckCircle2, 
-  XCircle, 
-  Package, 
-  User, 
-  FileText, 
+import {
+  ArrowLeft,
+  CheckCircle2,
+  XCircle,
+  Package,
+  User,
+  FileText,
   CreditCard,
   Calendar,
   Mail,
   Phone,
   Hash,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  MapPin,
+  User2
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -129,6 +131,8 @@ export default function DemandeDetailPage() {
         return "border-purple-200 bg-linear-to-r from-purple-50 to-violet-50 text-purple-800"
       case "PRET":
         return "border-gray-200 bg-linear-to-r from-gray-50 to-slate-50 text-gray-800"
+      case "RETIRE":
+        return "border-gray-200 bg-linear-to-r from-gray-50 to-slate-50 text-gray-800"
       default:
         return "border-gray-200 bg-linear-to-r from-gray-50 to-slate-50 text-gray-800"
     }
@@ -146,15 +150,19 @@ export default function DemandeDetailPage() {
         return "📦"
       case "PRET":
         return "📬"
+      case "RETIRE":
+        return "👋"
       default:
         return "📄"
     }
   }
 
   const getStatusProgress = (statut: string) => {
-    const statusOrder = ["EN_ATTENTE", "VALIDEE", "EN_PREPARATION", "PRET", "REJETEE"]
+    const statusOrder = ["EN_ATTENTE", "VALIDEE", "EN_PREPARATION", "PRET", "RETIRE", "REJETEE"]
     const index = statusOrder.indexOf(statut)
-    return ((index + 1) / statusOrder.length) * 100
+    // Adjust logic to handle rejected/withdrawn correctly in progress bar
+    if (statut === "REJETEE") return 100
+    return ((index + 1) / (statusOrder.length - 1)) * 100 // -1 because REJETEE is a separate terminal state
   }
 
   if (loading) {
@@ -235,6 +243,7 @@ export default function DemandeDetailPage() {
             <span>Validée</span>
             <span>En préparation</span>
             <span>Prête</span>
+            <span>Retirée</span>
           </div>
         </div>
 
@@ -262,7 +271,7 @@ export default function DemandeDetailPage() {
                       <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                         <User className="h-4 w-4 text-gray-400" />
                         <p className="font-semibold">
-                          {demande.etudiant.prenom} {demande.etudiant.nom}
+                          {demande.etudiant.nom} {demande.etudiant.prenom}
                         </p>
                       </div>
                     </div>
@@ -289,6 +298,45 @@ export default function DemandeDetailPage() {
                         <p className="font-medium">{demande.etudiant.telephone || "Non renseigné"}</p>
                       </div>
                     </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">Père</Label>
+                      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                        <User2 className="h-4 w-4 text-gray-400" />
+                        <p className="font-medium truncate">{demande.etudiant.nom_pere}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">Lieu de naissance</Label>
+                      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <p className="font-medium truncate">{demande.etudiant.lieu_naissance}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">Mère</Label>
+                      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                        <User2 className="h-4 w-4 text-gray-400" />
+                        <p className="font-medium truncate">{demande.etudiant.nom_mere}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">Date de naissance</Label>
+                      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                        <Calendar className="h-4 w-4 text-gray-400" />
+                        <p className="font-medium">
+                          {new Date(demande.etudiant.date_naissance).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               </CardContent>
@@ -331,9 +379,9 @@ export default function DemandeDetailPage() {
                       <p className="font-bold text-lg text-primary">{doc.prix.toLocaleString()} Ar</p>
                     </div>
                   ))}
-                  
+
                   <Separator className="my-4" />
-                  
+
                   <div className="flex items-center justify-between p-4 bg-linear-to-r from-gray-50 to-gray-100 rounded-xl">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-primary/10 rounded-lg">
@@ -370,7 +418,7 @@ export default function DemandeDetailPage() {
                       {getStatusIcon(demande.statut)} {demande.statut.replace("_", " ")}
                     </Badge>
                   </div>
-                  
+
                   {demande.statut === "EN_ATTENTE" && (
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -396,7 +444,7 @@ export default function DemandeDetailPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button 
+                            <Button
                               className="gap-2 cursor-pointer bg-linear-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white border-0 shadow-sm"
                               disabled={actionLoading}
                             >
@@ -426,7 +474,7 @@ export default function DemandeDetailPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel className="cursor-pointer border-gray-300">Annuler</AlertDialogCancel>
-                              <AlertDialogAction 
+                              <AlertDialogAction
                                 className="cursor-pointer bg-linear-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600"
                                 onClick={() => handleAction("valider")}
                               >
@@ -438,8 +486,8 @@ export default function DemandeDetailPage() {
 
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               className="gap-2 cursor-pointer border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                               disabled={actionLoading}
                             >
@@ -468,7 +516,7 @@ export default function DemandeDetailPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel className="cursor-pointer border-gray-300">Annuler</AlertDialogCancel>
-                              <AlertDialogAction 
+                              <AlertDialogAction
                                 className="cursor-pointer bg-linear-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600"
                                 onClick={() => handleAction("rejeter")}
                                 disabled={!commentaire}
@@ -483,7 +531,7 @@ export default function DemandeDetailPage() {
                   )}
 
                   {demande.statut === "VALIDEE" && (
-                    <Button 
+                    <Button
                       onClick={() => handleAction("preparer")}
                       className="w-full gap-2 cursor-pointer bg-linear-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
                       disabled={actionLoading}
@@ -494,6 +542,21 @@ export default function DemandeDetailPage() {
                         <Package className="h-4 w-4" />
                       )}
                       Marquer comme prêt
+                    </Button>
+                  )}
+
+                  {demande.statut === "PRET" && (
+                    <Button
+                      onClick={() => handleAction("retirer")}
+                      className="w-full gap-2 cursor-pointer bg-linear-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black text-white"
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      Marquer comme retiré
                     </Button>
                   )}
                 </div>

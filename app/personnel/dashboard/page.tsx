@@ -6,23 +6,30 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
-  FileText, 
-  LogOut, 
-  User, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  FileText,
+  LogOut,
+  User,
+  Clock,
+  CheckCircle2,
+  XCircle,
   Package,
   Download,
   Users,
   Filter,
   ChevronRight,
   Search,
+  Bell,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface Demande {
   id: number
@@ -36,6 +43,19 @@ interface Demande {
   nb_documents: number
 }
 
+interface Notification {
+  id: number
+  demande_id: number
+  type: string
+  message: string
+  lu: boolean
+  created_at: string
+  nom: string
+  prenom: string
+  matricule: string
+  demande_statut: string
+}
+
 export default function PersonnelDashboard() {
   const router = useRouter()
   const { toast } = useToast()
@@ -44,11 +64,14 @@ export default function PersonnelDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>("EN_ATTENTE")
   const [searchQuery, setSearchQuery] = useState("")
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
     validated: 0,
     ready: 0,
+    withdrawn: 0,
   })
 
   useEffect(() => {
@@ -64,6 +87,15 @@ export default function PersonnelDashboard() {
     setUser(JSON.parse(userData))
     fetchDemandes(token)
     fetchStats(token)
+    fetchNotifications(token)
+    fetchUnreadCount(token)
+
+    // Rafraîchir les notifications toutes les 30 secondes
+    const interval = setInterval(() => {
+      fetchUnreadCount(token)
+    }, 30000)
+
+    return () => clearInterval(interval)
   }, [filter])
 
   const fetchDemandes = async (token: string) => {
@@ -96,6 +128,53 @@ export default function PersonnelDashboard() {
     }
   }
 
+  const fetchNotifications = async (token: string) => {
+    try {
+      const response = await fetch("/api/personnel/notifications", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setNotifications(data.notifications || [])
+      }
+    } catch (error) {
+      console.error("Erreur chargement notifications:", error)
+    }
+  }
+
+  const fetchUnreadCount = async (token: string) => {
+    try {
+      const response = await fetch("/api/personnel/notifications/count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setUnreadCount(data.count || 0)
+      }
+    } catch (error) {
+      console.error("Erreur chargement compteur:", error)
+    }
+  }
+
+  const handleNotificationClick = async (notification: Notification) => {
+    const token = localStorage.getItem("token")
+    if (!token) return
+
+    try {
+      if (!notification.lu) {
+        await fetch(`/api/personnel/notifications/${notification.id}/lu`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        fetchUnreadCount(token)
+        fetchNotifications(token)
+      }
+      router.push(`/personnel/demandes/${notification.demande_id}`)
+    } catch (error) {
+      console.error("Erreur:", error)
+    }
+  }
+
   const handleLogout = () => {
     localStorage.removeItem("token")
     localStorage.removeItem("user")
@@ -116,6 +195,8 @@ export default function PersonnelDashboard() {
         return "bg-blue-500/10 text-blue-600 border-blue-200"
       case "PRET":
         return "bg-violet-500/10 text-violet-600 border-violet-200"
+      case "RETIRE":
+        return "bg-gray-500/10 text-gray-600 border-gray-200"
       default:
         return "bg-gray-500/10 text-gray-600 border-gray-200"
     }
@@ -133,6 +214,8 @@ export default function PersonnelDashboard() {
         return <Package className="h-4 w-4" />
       case "PRET":
         return <Download className="h-4 w-4" />
+      case "RETIRE":
+        return <CheckCircle2 className="h-4 w-4" />
       default:
         return <FileText className="h-4 w-4" />
     }
@@ -150,6 +233,8 @@ export default function PersonnelDashboard() {
         return "En préparation"
       case "PRET":
         return "Prêt"
+      case "RETIRE":
+        return "Retiré"
       default:
         return statut
     }
@@ -180,6 +265,62 @@ export default function PersonnelDashboard() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
+            {/* Notification Bell */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative cursor-pointer">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <div className="px-4 py-3 border-b">
+                  <h3 className="font-semibold text-sm">Notifications</h3>
+                  <p className="text-xs text-slate-500">
+                    {unreadCount} non lue{unreadCount > 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-slate-500">
+                      Aucune notification
+                    </div>
+                  ) : (
+                    notifications.slice(0, 10).map((notification) => (
+                      <DropdownMenuItem
+                        key={notification.id}
+                        className="px-4 py-3 cursor-pointer hover:bg-slate-50 border-b last:border-b-0"
+                        onClick={() => handleNotificationClick(notification)}
+                      >
+                        <div className="flex items-start gap-3 w-full">
+                          <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${notification.lu ? "bg-slate-300" : "bg-blue-500"
+                            }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${notification.lu ? "text-slate-600" : "text-slate-900 font-medium"
+                              }`}>
+                              {notification.message}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {new Date(notification.created_at).toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-full">
               <User className="h-4 w-4 text-slate-500" />
               <div className="text-sm">
@@ -190,13 +331,13 @@ export default function PersonnelDashboard() {
               </div>
             </div>
             <Button
-                                variant="ghost"
-                                size="icon"
-                                className="hidden lg:flex cursor-pointer"
-                                onClick={handleLogout}
-                            >
-                                <LogOut className="h-5 w-5" />
-                            </Button>
+              variant="ghost"
+              size="icon"
+              className="hidden lg:flex cursor-pointer"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
           </div>
         </div>
       </header>
@@ -226,7 +367,7 @@ export default function PersonnelDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card className="border-0 shadow-sm bg-linear-to-br from-white to-slate-50">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -254,8 +395,8 @@ export default function PersonnelDashboard() {
               </div>
               <div className="mt-4">
                 <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-amber-500 rounded-full" 
+                  <div
+                    className="h-full bg-amber-500 rounded-full"
                     style={{ width: `${(stats.pending / Math.max(stats.total, 1)) * 100}%` }}
                   />
                 </div>
@@ -293,6 +434,20 @@ export default function PersonnelDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border-0 shadow-sm bg-linear-to-br from-white to-slate-50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Retirés</p>
+                  <p className="text-3xl font-bold text-slate-900">{stats.withdrawn}</p>
+                </div>
+                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
+                  <CheckCircle2 className="h-6 w-6 text-gray-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Filtres Tabs */}
@@ -318,6 +473,10 @@ export default function PersonnelDashboard() {
                   <TabsTrigger value="PRET" className="gap-2 cursor-pointer">
                     <Package className="h-4 w-4" />
                     <span className="hidden sm:inline">Prêtes</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="RETIRE" className="gap-2 cursor-pointer">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Retirés</span>
                   </TabsTrigger>
                   <TabsTrigger value="REJETEE" className="gap-2 cursor-pointer">
                     <XCircle className="h-4 w-4" />
@@ -360,8 +519,8 @@ export default function PersonnelDashboard() {
                             <div>
                               <div className="flex items-center gap-3 mb-1">
                                 <h3 className="font-semibold text-slate-900">Demande #{demande.id}</h3>
-                                <Badge 
-                                  variant="outline" 
+                                <Badge
+                                  variant="outline"
                                   className={`${getStatusColor(demande.statut)} flex items-center gap-1.5`}
                                 >
                                   {getStatusIcon(demande.statut)}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 interface Notification {
     id: number
+    demande_id: number
     message: string
     created_at: string
     lu: boolean
@@ -42,23 +43,28 @@ export default function NotificationsPage() {
         }
     }
 
-    const handleMarkAsRead = async (id: number) => {
-        const token = localStorage.getItem("token")
-        if (!token) return
-
-        try {
-            const response = await fetch(`/api/notifications/${id}/lu`, {
-                method: "PUT",
-                headers: { Authorization: `Bearer ${token}` },
-            })
-
-            if (response.ok) {
-                setNotifications((prev) =>
-                    prev.map((n) => (n.id === id ? { ...n, lu: true } : n))
-                )
+    const handleNotificationClick = async (notification: Notification) => {
+        if (!notification.lu) {
+            const token = localStorage.getItem("token")
+            if (token) {
+                try {
+                    await fetch(`/api/notifications/${notification.id}/lu`, {
+                        method: "PUT",
+                        headers: { Authorization: `Bearer ${token}` },
+                    })
+                    // Optimistic update of UI
+                    setNotifications((prev) =>
+                        prev.map((n) => (n.id === notification.id ? { ...n, lu: true } : n))
+                    )
+                } catch (error) {
+                    console.error("Erreur:", error)
+                }
             }
-        } catch (error) {
-            console.error("Erreur:", error)
+        }
+
+        // Redirect to demand detail page
+        if (notification.demande_id) {
+            router.push(`/etudiant/demandes/${notification.demande_id}`)
         }
     }
 
@@ -69,7 +75,7 @@ export default function NotificationsPage() {
                     <CardTitle>Notifications</CardTitle>
                     <CardDescription>
                         Retrouvez ici l'historique de vos notifications concernant vos demandes.
-                        Cliquez sur une notification non lue pour la marquer comme lue.
+                        Cliquez sur une notification pour voir les détails de la demande.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -82,9 +88,9 @@ export default function NotificationsPage() {
                             {notifications.map((notification) => (
                                 <div
                                     key={notification.id}
-                                    onClick={() => !notification.lu && handleMarkAsRead(notification.id)}
-                                    className={`p-4 rounded-lg border transition-all ${!notification.lu
-                                        ? "bg-accent/10 border-accent cursor-pointer hover:bg-accent/20"
+                                    onClick={() => handleNotificationClick(notification)}
+                                    className={`p-4 rounded-lg border transition-all cursor-pointer ${!notification.lu
+                                        ? "bg-accent/10 border-accent hover:bg-accent/20"
                                         : "bg-card hover:bg-muted/50"
                                         }`}
                                 >

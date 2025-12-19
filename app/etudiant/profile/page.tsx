@@ -31,10 +31,14 @@ export default function EtudiantProfile() {
 
     // Form states
     const [formData, setFormData] = useState({
+        nom: "",
+        prenom: "",
+        date_naissance: "",
+        lieu_naissance: "",
         email: "",
         telephone: "",
-        adresse: "",
-        ville: ""
+        nom_pere: "",
+        nom_mere: ""
     })
 
     // Password visibility states
@@ -54,10 +58,14 @@ export default function EtudiantProfile() {
         const parsedUser = JSON.parse(userData)
         setUser(parsedUser)
         setFormData({
+            nom: parsedUser.nom || "",
+            prenom: parsedUser.prenom || "",
+            date_naissance: parsedUser.date_naissance ? new Date(parsedUser.date_naissance).toISOString().split('T')[0] : "",
+            lieu_naissance: parsedUser.lieu_naissance || "",
             email: parsedUser.email || "",
             telephone: parsedUser.telephone || "",
-            adresse: parsedUser.adresse || "",
-            ville: parsedUser.ville || ""
+            nom_pere: parsedUser.nom_pere || "",
+            nom_mere: parsedUser.nom_mere || ""
         })
 
         setLoading(false)
@@ -135,10 +143,10 @@ export default function EtudiantProfile() {
 
     const handleSave = async () => {
         setSaving(true)
-        
+
         try {
             const token = localStorage.getItem("token")
-            
+
             const response = await fetch("/api/etudiant", {
                 method: "PUT",
                 headers: {
@@ -146,8 +154,14 @@ export default function EtudiantProfile() {
                     Authorization: `Bearer ${token}`
                 },
                 body: JSON.stringify({
+                    nom: formData.nom,
+                    prenom: formData.prenom,
+                    date_naissance: formData.date_naissance,
+                    lieu_naissance: formData.lieu_naissance,
                     email: formData.email,
-                    telephone: formData.telephone
+                    telephone: formData.telephone,
+                    nom_pere: formData.nom_pere,
+                    nom_mere: formData.nom_mere
                 })
             })
 
@@ -158,7 +172,7 @@ export default function EtudiantProfile() {
                 const updatedUser = { ...user, ...data.user }
                 localStorage.setItem("user", JSON.stringify(updatedUser))
                 setUser(updatedUser)
-                
+
                 toast({
                     title: "Profil mis à jour",
                     description: "Vos informations ont été enregistrées avec succès."
@@ -262,11 +276,19 @@ export default function EtudiantProfile() {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-2">
                                                 <Label htmlFor="nom">Nom</Label>
-                                                <Input id="nom" value={user.nom} disabled className="bg-gray-50" />
+                                                <Input
+                                                    id="nom"
+                                                    value={formData.nom}
+                                                    onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="prenom">Prénom</Label>
-                                                <Input id="prenom" value={user.prenom} disabled className="bg-gray-50" />
+                                                <Input
+                                                    id="prenom"
+                                                    value={formData.prenom}
+                                                    onChange={(e) => setFormData({ ...formData, prenom: e.target.value })}
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="date_naissance">Date de naissance</Label>
@@ -274,9 +296,10 @@ export default function EtudiantProfile() {
                                                     <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
                                                     <Input
                                                         id="date_naissance"
-                                                        value={user.date_naissance ? new Date(user.date_naissance).toLocaleDateString() : ""}
-                                                        disabled
-                                                        className="pl-9 bg-gray-50"
+                                                        type="date"
+                                                        value={formData.date_naissance}
+                                                        onChange={(e) => setFormData({ ...formData, date_naissance: e.target.value })}
+                                                        className="pl-9"
                                                     />
                                                 </div>
                                             </div>
@@ -284,8 +307,29 @@ export default function EtudiantProfile() {
                                                 <Label htmlFor="lieu_naissance">Lieu de naissance</Label>
                                                 <div className="relative">
                                                     <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                                                    <Input id="lieu_naissance" value={user.lieu_naissance || ""} disabled className="pl-9 bg-gray-50" />
+                                                    <Input
+                                                        id="lieu_naissance"
+                                                        value={formData.lieu_naissance}
+                                                        onChange={(e) => setFormData({ ...formData, lieu_naissance: e.target.value })}
+                                                        className="pl-9"
+                                                    />
                                                 </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="nom_pere">Nom du père</Label>
+                                                <Input
+                                                    id="nom_pere"
+                                                    value={formData.nom_pere}
+                                                    onChange={(e) => setFormData({ ...formData, nom_pere: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="nom_mere">Nom de la mère</Label>
+                                                <Input
+                                                    id="nom_mere"
+                                                    value={formData.nom_mere}
+                                                    onChange={(e) => setFormData({ ...formData, nom_mere: e.target.value })}
+                                                />
                                             </div>
                                         </div>
 

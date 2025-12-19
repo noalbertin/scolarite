@@ -40,7 +40,7 @@ export default function HomePage() {
             scolarité
           </p>
           <div className="flex gap-4 justify-center pt-4">
-            <Link href="/auth/register">
+            <Link href="/auth/login">
               <Button size="lg" className="text-lg cursor-pointer">
                 Commencer maintenant
               </Button>

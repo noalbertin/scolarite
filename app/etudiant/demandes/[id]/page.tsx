@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   ArrowLeft,
   Calendar,
@@ -19,11 +18,6 @@ import {
   XCircle,
   AlertCircle,
   Printer,
-  Mail,
-  CreditCard,
-  Building,
-  User,
-  Phone
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -54,6 +48,11 @@ interface DemandeDetail {
     matricule: string
     email: string
     filiere: string
+    telephone?: string
+    nom_pere?: string
+    nom_mere?: string
+    date_naissance?: string
+    lieu_naissance?: string
   }
   paiement?: {
     mode: string
@@ -249,15 +248,279 @@ export default function DemandeDetailPage({ params }: { params: Promise<{ id: st
     return icons[code] || <FileText className="h-5 w-5" />
   }
 
-  const handlePrint = () => {
-    window.print()
-  }
+  const handleDownloadTicket = async () => {
+    if (!demande) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Aucune demande à télécharger",
+      })
+      return
+    }
 
-  const handleContact = () => {
-    toast({
-      title: "Contact",
-      description: "Redirection vers le service support",
-    })
+    try {
+      const jsPDFModule = await import("jspdf")
+      const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF
+      const autoTableModule = await import("jspdf-autotable")
+      const autoTable = autoTableModule.default || (autoTableModule as any)
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        putOnlyUsedFonts: true,
+        compress: true
+      })
+
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+
+      // === MODERN GRADIENT HEADER ===
+      // Création d'un dégradé moderne
+      const gradient = doc.context2d.createLinearGradient(0, 0, pageWidth, 0)
+      gradient.addColorStop(0, "#4f46e5") // Indigo-600
+      gradient.addColorStop(1, "#7c3aed") // Violet-600
+
+      // Header avec dégradé
+      doc.setFillColor(79, 70, 229) // Fallback color
+      doc.rect(0, 0, pageWidth, 50, "F")
+
+      // Ajout du logo
+      try {
+        const logoUrl = "/icon.png"
+        const logoResponse = await fetch(logoUrl)
+        const logoBlob = await logoResponse.blob()
+        const logoBase64 = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result)
+          reader.readAsDataURL(logoBlob)
+        })
+
+        doc.addImage(logoBase64 as string, 'PNG', margin, 10, 30, 30)
+      } catch (error) {
+        console.warn("Logo non chargé, continuation sans logo")
+      }
+
+      // Titre principal
+      doc.setTextColor(255, 255, 255)
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(24)
+      doc.text("TICKET DE DEMANDE", pageWidth / 2, 25, { align: "center" })
+
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.text("SERVICE DE SCOLARITÉ", pageWidth / 2, 32, { align: "center" })
+
+      // === DATE ET ÉTAT ===
+      const currentY = 60
+      doc.setTextColor(100, 100, 100)
+      doc.setFontSize(9)
+      doc.setFont("helvetica", "normal")
+      doc.text(`Généré le: ${new Date().toLocaleDateString("fr-FR")} ${new Date().toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })}`, margin, currentY)
+
+      // État de la demande
+      const etatColor = demande.statut === "traité" ? "#10b981" :
+        demande.statut === "en_cours" ? "#f59e0b" :
+        demande.statut === "en_attente" ? "#6366f1" : "#6b7280"
+
+      // Dimensions du badge
+      const badgeWidth = 40
+      const badgeHeight = 10
+      const badgeX = pageWidth - margin - badgeWidth
+      const badgeY = currentY - 5
+
+      // Calcul du centre vertical exact
+      const centerY = badgeY + (badgeHeight / 3)
+
+      doc.setFillColor(etatColor)
+      doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 2, 2, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(16) // Taille réduite pour mieux s'adapter
+      doc.setFont("helvetica", "bold")
+
+      // Centrage parfait - Option 1: Utiliser align: "center" et middle
+      doc.text(
+        demande.statut.toUpperCase(), 
+        badgeX + (badgeWidth / 2), // Centre horizontal
+        centerY + 1, // Ajustement manuel pour le centrage vertical
+        { 
+          align: "center",
+          baseline: "middle" // Cette option centre verticalement
+        }
+      )
+
+// OU Option 2: Si jsPDF ne supporte pas 'baseline: "middle"', utiliser cette approche:
+// doc.text(
+//   demande.statut.toUpperCase(), 
+//   badgeX + (badgeWidth / 2), 
+//   centerY, 
+//   { 
+//     align: "center",
+//     lineHeightFactor: 1.2
+//   }
+// )
+
+
+      // === SECTION ÉTUDIANT ===
+      const sectionY = currentY + 15
+      doc.setDrawColor(229, 231, 235)
+      doc.setLineWidth(0.5)
+      doc.line(margin, sectionY, pageWidth - margin, sectionY)
+
+      doc.setTextColor(30, 41, 59)
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("INFORMATIONS ÉTUDIANT", margin, sectionY + 10)
+
+      // Carte d'information moderne
+      doc.setFillColor(249, 250, 251)
+      doc.roundedRect(margin, sectionY + 15, pageWidth - 2 * margin, 50, 5, 5, "F")
+      doc.setDrawColor(226, 232, 240)
+      doc.setLineWidth(0.3)
+      doc.roundedRect(margin, sectionY + 15, pageWidth - 2 * margin, 50, 5, 5, "S")
+
+      // Colonne gauche
+      const infoStartY = sectionY + 25
+      doc.setTextColor(71, 85, 105)
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "bold")
+      doc.text("Nom complet:", margin + 5, infoStartY)
+      doc.setFont("helvetica", "normal")
+      doc.text(`${demande.etudiant?.nom || ""} ${demande.etudiant?.prenom || ""}`, margin + 35, infoStartY)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Matricule:", margin + 5, infoStartY + 7)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.matricule || "", margin + 35, infoStartY + 7)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Email:", margin + 5, infoStartY + 14)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.email || "", margin + 35, infoStartY + 14)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Téléphone:", margin + 5, infoStartY + 21)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.telephone || "Non renseigné", margin + 35, infoStartY + 21)
+
+      // Colonne droite
+      const rightColX = pageWidth / 2 + 10
+      doc.setFont("helvetica", "bold")
+      doc.text("Date de naissance:", rightColX, infoStartY)
+      doc.setFont("helvetica", "normal")
+      const dateNaissance = demande.etudiant?.date_naissance
+        ? new Date(demande.etudiant.date_naissance).toLocaleDateString("fr-FR")
+        : "Non renseigné"
+      doc.text(dateNaissance, rightColX + 45, infoStartY)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Lieu de naissance:", rightColX, infoStartY + 7)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.lieu_naissance || "Non renseigné", rightColX + 45, infoStartY + 7)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Nom du père:", rightColX, infoStartY + 14)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.nom_pere || "Non renseigné", rightColX + 45, infoStartY + 14)
+
+      doc.setFont("helvetica", "bold")
+      doc.text("Nom de la mère:", rightColX, infoStartY + 21)
+      doc.setFont("helvetica", "normal")
+      doc.text(demande.etudiant?.nom_mere || "Non renseigné", rightColX + 45, infoStartY + 21)
+
+      // === DOCUMENTS TABLE ===
+      const tableY = sectionY + 75
+      doc.setTextColor(30, 41, 59)
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("DOCUMENTS DEMANDÉS", margin, tableY)
+
+      const tableData = demande.documents.map((doc, index) => [
+        { content: doc.type_document.libelle, styles: { fontStyle: 'bold' as const } },
+        doc.niveau || "-",
+        doc.annee_universitaire || "-",
+        { content: `${doc.prix} Ar`, styles: { fontStyle: 'bold' as const, textColor: [79, 70, 229] as [number, number, number] } }
+      ])
+
+      autoTable(doc, {
+        startY: tableY + 5,
+        margin: { left: margin, right: margin },
+        head: [[
+          { content: "Type de document", styles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' as const } },
+          { content: "Niveau", styles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' as const } },
+          { content: "Année Univ.", styles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' as const } },
+          { content: "Prix", styles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' as const } }
+        ]],
+        body: tableData,
+        foot: [[
+          { content: "TOTAL À PAYER:", colSpan: 3, styles: { fillColor: [249, 250, 251], textColor: [30, 41, 59], fontStyle: 'bold' as const, fontSize: 12, halign: 'right' } },
+          { content: `${demande.montant_total} Ar`, styles: { fillColor: [249, 250, 251], textColor: [79, 70, 229], fontStyle: 'bold' as const, fontSize: 12, halign: 'right' } }
+        ]],
+        theme: "grid",
+        styles: {
+          fontSize: 10,
+          cellPadding: 6,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.3,
+          textColor: [71, 85, 105]
+        },
+        headStyles: {
+          fillColor: [79, 70, 229],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold' as const,
+          lineWidth: 0
+        },
+        footStyles: {
+          fillColor: [249, 250, 251],
+          textColor: [30, 41, 59],
+          fontStyle: 'bold' as const,
+          lineWidth: 0.5
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251]
+        },
+        columnStyles: {
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 40, halign: 'right' }
+        }
+      })
+
+      const finalY = (doc as any).lastAutoTable.finalY + 20
+
+      // Footer
+      const footerY = pageHeight - 15
+      doc.setDrawColor(226, 232, 240)
+      doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5)
+
+      doc.setFontSize(8)
+      doc.setTextColor(148, 163, 184)
+      doc.setFont("helvetica", "normal")
+      doc.text("Ce ticket est valable uniquement pour la demande concernée", pageWidth / 2, footerY, { align: "center" })
+      doc.text(`ID de suivi: ${demande.id}-${Date.now().toString(36).toUpperCase()}`, pageWidth / 2, footerY + 4, { align: "center" })
+
+      // Filigrane de sécurité
+      doc.setTextColor(226, 232, 240)
+      doc.setFontSize(40)
+      doc.setFont("helvetica", "bold")
+      doc.text("VALIDE", pageWidth / 2, pageHeight / 2, {
+        align: "center",
+        angle: 45
+      })
+
+      // Sauvegarde
+      doc.save(`Ticket_${demande.etudiant?.matricule || demande.id}_${new Date().toISOString().split('T')[0]}.pdf`)
+
+    } catch (error) {
+      console.error("Erreur génération PDF:", error)
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de générer le ticket",
+      })
+    }
   }
 
   if (loading) {
@@ -293,9 +556,9 @@ export default function DemandeDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="flex items-center">
-          <Button variant="outline" size="sm" className="gap-2 cursor-pointer" onClick={handlePrint}>
-            <Printer className="h-4 w-4" />
-            Imprimer
+          <Button variant="outline" size="sm" className="gap-2 cursor-pointer" onClick={handleDownloadTicket}>
+            <Download className="h-4 w-4" />
+            Télécharger le ticket
           </Button>
         </div>
       </div>
@@ -360,15 +623,68 @@ export default function DemandeDetailPage({ params }: { params: Promise<{ id: st
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div>
+                    <div className="w-full">
                       <h4 className="font-semibold text-green-800 mb-1">Documents prêts !</h4>
-                      <p className="text-green-700 mb-2">
+                      <p className="text-green-700 mb-3">
                         Vos documents sont disponibles au service de scolarité.
                       </p>
-                      <div className="text-sm text-green-600 space-y-1">
-                        <p>📍 <strong>Lieu :</strong> Bureau scolarité - Maninday</p>
-                        <p>🕒 <strong>Horaires :</strong> Lundi au vendredi, 8h-12h et 14h-17h</p>
-                        <p>📋 <strong>À apporter :</strong> Carte d'étudiant et pièce d'identité</p>
+
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Section ENI Fianarantsoa */}
+                        <div className="bg-white p-4 rounded-lg border border-green-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                            <h5 className="font-semibold text-green-800">ENI Fianarantsoa</h5>
+                          </div>
+                          <div className="space-y-2 text-green-700">
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">📍</span>
+                              <div>
+                                <strong>Lieu :</strong> Tanambao Antaninarenina
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">🕒</span>
+                              <div>
+                                <strong>Horaires :</strong> Lundi au vendredi, 8h-12h et 14h-17h
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">📋</span>
+                              <div>
+                                <strong>À apporter :</strong> Carte d'étudiant, pièce d'identité et le montant à payer
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section ENI Toliara */}
+                        <div className="bg-white p-4 rounded-lg border border-green-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="h-3 w-3 rounded-full bg-orange-500"></div>
+                            <h5 className="font-semibold text-green-800">ENI Toliara</h5>
+                          </div>
+                          <div className="space-y-2 text-green-700">
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">📍</span>
+                              <div>
+                                <strong>Lieu :</strong> Bureau scolarité - Maninday
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">🕒</span>
+                              <div>
+                                <strong>Horaires :</strong> Lundi au vendredi, 8h-12h et 14h-17h
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-green-600">📋</span>
+                              <div>
+                                <strong>À apporter :</strong> Carte d'étudiant, pièce d'identité et le montant à payer
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -416,11 +732,6 @@ export default function DemandeDetailPage({ params }: { params: Promise<{ id: st
                         <p className="text-2xl font-bold text-gray-900">
                           {doc.prix.toLocaleString()} Ar
                         </p>
-                        {doc.statut && (
-                          <Badge variant="outline" className="mt-2">
-                            {doc.statut}
-                          </Badge>
-                        )}
                       </div>
                     </div>
                     {index < demande.documents.length - 1 && (

@@ -50,9 +50,15 @@ export default function EtudiantLayout({
         }
 
         setUser(JSON.parse(userData))
-        fetchNotifications(token)
         setLoading(false)
     }, [])
+
+    useEffect(() => {
+        const token = localStorage.getItem("token")
+        if (token) {
+            fetchNotifications(token)
+        }
+    }, [pathname])
 
     const fetchNotifications = async (token: string) => {
         try {
@@ -95,7 +101,7 @@ export default function EtudiantLayout({
                                 </Avatar>
                                 <div>
                                     <p className="font-semibold">
-                                       {user.nom} {user.prenom} 
+                                        {user.nom} {user.prenom}
                                     </p>
                                     <p className="text-sm text-gray-500">{user.matricule}</p>
                                 </div>
@@ -254,7 +260,7 @@ export default function EtudiantLayout({
                                 </Avatar>
                                 <div className="hidden xl:block">
                                     <p className="text-sm font-medium">
-                                      {user.nom}  {user.prenom} 
+                                        {user.nom}  {user.prenom}
                                     </p>
                                     <p className="text-xs text-gray-500">Étudiant</p>
                                 </div>
